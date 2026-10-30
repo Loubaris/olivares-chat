@@ -218,7 +218,7 @@
         <div class="box">
           <textarea id="input" rows="1" placeholder="Describe what to build or change in your project… (Enter to send, Shift+Enter for a new line)"></textarea>
           <div class="row">
-            <span class="muted" id="hint" style="font-size:12px">Claude works on the project files on the right.</span>
+            <span class="muted" id="hint" style="font-size:12px"></span>
             <button class="btn primary" id="send">Send</button>
           </div>
         </div>
@@ -273,6 +273,7 @@ async function api(action, body, raw) {
   if (raw && r.ok) return r;
   const d = await r.json().catch(() => ({}));
   if (r.status === 401) { store.set(null); location.reload(); }
+  if (r.status === 409) throw new Error("Still working on the previous message.");
   if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
   return d;
 }
@@ -396,7 +397,7 @@ async function openConv(id) {
 }
 
 function lastReply() { const all = $("msgs").querySelectorAll(".msg.assistant"); return all[all.length - 1]; }
-function setBusy(b) { busy = b; $("send").disabled = b; $("hint").textContent = b ? "Claude is working… you can leave this page, it keeps going." : "Claude works on the project files on the right."; }
+function setBusy(b) { busy = b; $("send").disabled = b; $("hint").textContent = b ? "Working… you can leave this page, it keeps going." : ""; }
 
 async function send() {
   const text = $("input").value.trim();
@@ -451,7 +452,7 @@ function startPolling() {
       // turn finished: reload the stored version (files, cost) and refresh the rest
       await openConv(id);
       loadList(); loadBalance();
-      if (d.changed_files) { await loadTree(); toast(`${d.changed_files} file(s) updated by Claude`); }
+      if (d.changed_files) { await loadTree(); toast(`${d.changed_files} file(s) updated`); }
     } catch (e) {
       pollTimer = setTimeout(tick, 4000);
     }
@@ -495,15 +496,15 @@ function renderTree() {
       if (isOpen) walk(d, depth + 1);
     }
     for (const f of n.files.sort((a, b) => a.name.localeCompare(b.name))) {
-      rows.push(`<div class="node" data-file="${esc(f.path)}" style="padding-left:${20 + depth * 14}px" title="${esc(f.path)} · ${f.source === "claude" ? "changed by Claude" : "uploaded"} ${new Date(f.updated_at).toLocaleString("en-GB")}">
-        <span>${icon(f.name)}</span><span class="nm">${esc(f.name)}</span>${recent(f) ? '<span class="ai" title="Changed by Claude in the last 24 h">AI</span>' : ""}
+      rows.push(`<div class="node" data-file="${esc(f.path)}" style="padding-left:${20 + depth * 14}px" title="${esc(f.path)} · ${f.source === "claude" ? "changed by the assistant" : "uploaded"} ${new Date(f.updated_at).toLocaleString("en-GB")}">
+        <span>${icon(f.name)}</span><span class="nm">${esc(f.name)}</span>${recent(f) ? '<span class="ai" title="Changed by the assistant in the last 24 h">AI</span>' : ""}
         <span class="sz">${size(f.size)}</span>
         <span class="acts"><button class="icon" data-act="view" title="Preview">👁</button><button class="icon" data-act="dl" title="Download">⬇</button><button class="icon" data-act="del" title="Delete">✕</button></span></div>`);
     }
   };
   walk(root, 0);
   $("tree").innerHTML = rows.length ? rows.join("")
-    : `<div class="fempty">This project is empty.<br><br>Upload your behavior and resource packs (a .zip or .mcaddon is unpacked into folders), or just ask Claude to start a new add-on.</div>`;
+    : `<div class="fempty">This project is empty.<br><br>Upload your behavior and resource packs (a .zip or .mcaddon is unpacked into folders), or describe a new add-on to start from scratch.</div>`;
   $("fstatus").textContent = files.length ? `${files.length} files · ${size(dirSize(root))}${selFolder ? " · uploads go to " + selFolder + "/" : ""}` : "";
 }
 async function loadTree() {
