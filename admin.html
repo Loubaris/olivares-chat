@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credits admin</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1d1c1a; --muted: #6f6c66;
+    --line: #e4e1db; --accent: #c2643c; --good: #2f7d4f; --bad: #b3402e;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161514; --card: #201f1d; --text: #edeae4; --muted: #9a968e;
+      --line: #34322e; --accent: #e08a5f; --good: #5cb882; --bad: #e0705d;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 32px 16px; }
+  main { max-width: 860px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  h3 { font-size: 17px; margin: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input { width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  button { padding: 9px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  button.danger { background: transparent; color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; }
+  .stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin: 14px 0; }
+  .stat { background: var(--bg); border-radius: 9px; padding: 10px 12px; }
+  .stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .meta { color: var(--muted); font-size: 12px; font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+  .pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; }
+  .on { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+  .off { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  td, th { text-align: left; padding: 6px 4px; border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .tablewrap { overflow-x: auto; }
+  .msg { padding: 12px 14px; border-radius: 9px; margin-bottom: 16px; }
+  .msg.ok { background: color-mix(in srgb, var(--good) 14%, transparent); }
+  .msg.err { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+  .code { font-family: ui-monospace, Consolas, monospace; font-size: 18px; font-weight: 700; letter-spacing: .05em; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .chatrow { cursor: pointer; }
+  .chatrow:hover td { background: var(--bg); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; }
+  #viewer { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .55); display: flex; justify-content: center; padding: 24px 12px; }
+  #viewer .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; width: min(900px, 100%); display: flex; flex-direction: column; min-height: 0; }
+  #viewer .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  #viewer .head h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #viewer .body { overflow-y: auto; padding: 16px 18px; }
+  .m { margin-bottom: 16px; }
+  .m .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .m .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .m.user .txt { background: var(--bg); border-radius: 9px; padding: 10px 12px; }
+  .m details { margin-top: 6px; font-size: 12px; }
+  .m ol { margin: 6px 0 0; padding-left: 20px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .files img { max-width: 100%; max-height: 360px; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .files button { font-size: 12px; padding: 5px 10px; }
+</style>
+</head>
+<body>
+<main>
+  <section class="card" id="login" style="max-width:380px;margin:60px auto">
+    <h2>Credits admin</h2>
+    <label for="pwd">Password</label>
+    <input id="pwd" type="password" autocomplete="current-password">
+    <div class="actions"><button id="enter">Sign in</button></div>
+    <div class="msg err" id="loginErr" hidden style="margin:12px 0 0"></div>
+  </section>
+
+  <div id="app" hidden>
+    <header>
+      <h1>Claude credits</h1>
+      <div class="actions" style="margin:0">
+        <button class="ghost" id="refresh">Refresh from Anthropic</button>
+        <button class="ghost" id="logout">Sign out</button>
+      </div>
+    </header>
+
+    <div class="msg" id="msg" hidden></div>
+    <div id="clients"></div>
+
+    <section class="card">
+      <h2>New client</h2>
+      <div class="grid">
+        <div><label>Name</label><input id="nName" placeholder="Thomas"></div>
+        <div><label>Workspace ID</label><input id="nWs" placeholder="wrkspc_..."></div>
+        <div><label>API key ID (to cut access at 0)</label><input id="nKey" placeholder="apikey_..."></div>
+        <div><button id="create">Create</button></div>
+      </div>
+      <p class="hint">Find the Workspace ID and API key ID in the Anthropic Console (Settings › Workspaces / API keys). These are IDs, not the secret key itself.</p>
+    </section>
+  </div>
+</main>
+
+<script>
+const API = "https://giigecqlofbkwjgnvvnt.supabase.co/functions/v1/credits";
+const KEY = "claude-credits-admin";
+const $ = (id) => document.getElementById(id);
+const eur = (n) => n.toLocaleString("en-GB", { style: "currency", currency: "EUR" });
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+let pwd = (() => { try { return sessionStorage.getItem(KEY); } catch { return null; } })();
+
+async function call(action, extra = {}) {
+  const r = await fetch(API, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-admin-password": pwd },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  const d = await r.json();
+  if (r.status === 401) { logout(); throw new Error(d.error); }
+  if (!r.ok) throw new Error(d.error || "Error");
+  return d;
+}
+
+function show(html, ok = true) {
+  $("msg").innerHTML = html;
+  $("msg").className = "msg " + (ok ? "ok" : "err");
+  $("msg").hidden = false;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function logout() {
+  try { sessionStorage.removeItem(KEY); } catch {}
+  pwd = null;
+  $("app").hidden = true; $("login").hidden = false;
+}
+
+async function refresh(force = false) {
+  try {
+    const { clients } = await call("list", { refresh: force });
+    $("clients").innerHTML = clients.length ? clients.map(card).join("") : "";
+    if (force) show("Up to date from Anthropic.");
+  } catch (e) { show(esc(e.message), false); }
+}
+
+function card(c) {
+  return `
+  <section class="card" data-id="${c.id}">
+    <div class="top">
+      <div>
+        <h3>${esc(c.name)} <span class="pill ${c.enabled ? "on" : "off"}">${c.enabled ? "active" : c.active ? "balance used up" : "disabled"}</span></h3>
+        <div class="meta">${esc(c.workspace_id)} · ${c.api_key_id ? esc(c.api_key_id) + " (key: " + esc(c.key_status ?? "?") + ")" : "no key linked: auto cut-off off"}</div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>${eur(c.paid_eur)}</b><span>Total paid</span></div>
+      <div class="stat"><b>${eur(c.credit_eur)}</b><span>Credit given</span></div>
+      <div class="stat"><b>${eur(c.margin_eur)}</b><span>Your margin</span></div>
+      <div class="stat"><b>${eur(c.spent_eur)}</b><span>API cost so far</span></div>
+      <div class="stat"><b>${eur(c.credit_left_eur)}</b><span>Credit left</span></div>
+      <div class="stat"><b>${eur(c.remaining_eur)}</b><span>Balance the client sees</span></div>
+    </div>
+    <div class="grid">
+      <div><label>Paid (€)</label><input type="number" min="0" step="0.01" class="tPaid" placeholder="200"></div>
+      <div><label>Your margin (%)</label><input type="number" min="0" max="95" step="1" class="tMargin" value="${margin()}"></div>
+      <div><label>Credit given (€): add this to the Console</label><input type="number" min="0" step="0.01" class="tApi" placeholder="150"></div>
+      <div><label>Note</label><input class="tNote" placeholder="PayPal 30/10"></div>
+      <div><button data-act="topup">+ Top up</button></div>
+    </div>
+    <p class="hint tCalc">Type the amount paid: the credit to give is computed from your margin.</p>
+    <div class="actions">
+      <button class="ghost" data-act="reset">New access code</button>
+      <button class="${c.active ? "danger" : "ghost"}" data-act="toggle" data-active="${c.active}">${c.active ? "Disable" : "Enable"}</button>
+    </div>
+    <details class="chats" data-client="${c.id}">
+      <summary>Chats</summary>
+      <div class="chatlist hint">Loading…</div>
+    </details>
+    <details>
+      <summary>Top-up history (${c.topups.length})</summary>
+      <div class="tablewrap"><table>
+        <tr><th>Date</th><th>Paid</th><th>Credit</th><th>Note</th><th></th></tr>
+        ${c.topups.map((t) => `<tr>
+          <td>${new Date(t.created_at).toLocaleString("en-GB")}</td>
+          <td>${eur(Number(t.paid_eur))}</td><td>${eur(Number(t.credit_eur))}</td>
+          <td>${esc(t.note)}</td>
+          <td><button class="danger" data-act="deltopup" data-topup="${t.id}">Delete</button></td>
+        </tr>`).join("")}
+      </table></div>
+    </details>
+  </section>`;
+}
+
+// ---- Top-up calculator: credit given = paid minus your margin (the margin % is remembered in this browser)
+const MARGIN_KEY = "claude-credits-margin";
+function margin() {
+  try { const v = Number(localStorage.getItem(MARGIN_KEY)); return v >= 0 && v < 100 && localStorage.getItem(MARGIN_KEY) !== null ? v : 25; } catch { return 25; }
+}
+function calc(sec, fromCredit) {
+  const paid = Number(sec.querySelector(".tPaid").value), m = Number(sec.querySelector(".tMargin").value);
+  const credit = sec.querySelector(".tApi");
+  if (!fromCredit && paid > 0 && m >= 0 && m < 100) credit.value = (Math.round(paid * (100 - m)) / 100).toFixed(2);
+  const c = Number(credit.value), out = sec.querySelector(".tCalc");
+  if (!(paid > 0 && c > 0)) { out.textContent = "Type the amount paid: the credit to give is computed from your margin."; return; }
+  out.innerHTML = `Add <b>${eur(c)}</b> in the Anthropic Console (Billing). You keep <b>${eur(paid - c)}</b>. ` +
+    `The client sees ${eur(paid)}; their usage is shown ×${(paid / c).toFixed(2)}.` + (c > paid ? " <b>Credit above what was paid: you lose money.</b>" : "");
+}
+$("clients").addEventListener("input", (e) => {
+  const sec = e.target.closest("[data-id]");
+  if (!sec || !e.target.matches(".tPaid, .tMargin, .tApi")) return;
+  if (e.target.matches(".tMargin")) {
+    try { localStorage.setItem(MARGIN_KEY, e.target.value); } catch {}
+    sec.querySelector(".tMargin").value = e.target.value;
+  }
+  calc(sec, e.target.matches(".tApi"));
+});
+
+// Two-click confirm instead of confirm(), which may be blocked
+function armed(btn) {
+  if (btn.dataset.armed) return true;
+  btn.dataset.armed = "1";
+  const label = btn.textContent;
+  btn.textContent = "Confirm?";
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = label; }, 3000);
+  return false;
+}
+
+$("clients").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const sec = btn.closest("[data-id]");
+  const id = sec.dataset.id;
+  btn.disabled = true;
+  try {
+    if (btn.dataset.act === "topup") {
+      const paid = Number(sec.querySelector(".tPaid").value);
+      const credit = Number(sec.querySelector(".tApi").value);
+      if (!(paid > 0 && credit > 0)) throw new Error("Enter the amount paid and the credit given.");
+      await call("topup", { client_id: id, paid_eur: paid, credit_eur: credit, note: sec.querySelector(".tNote").value });
+      show(`Top-up saved: ${eur(paid)} paid, ${eur(credit)} of credit. Add ${eur(credit)} in the Anthropic Console if not done yet.`);
+    } else if (btn.dataset.act === "reset") {
+      if (!armed(btn)) return;
+      const { code } = await call("reset_code", { client_id: id });
+      show(`New code (the old one no longer works): <div class="code">${esc(code)}</div><p class="hint">It will never be shown again: send it now.</p>`);
+    } else if (btn.dataset.act === "toggle") {
+      if (!armed(btn)) return;
+      await call("set_active", { client_id: id, active: btn.dataset.active !== "true" });
+      show("Status updated.");
+    } else if (btn.dataset.act === "deltopup") {
+      if (!armed(btn)) return;
+      await call("delete_topup", { topup_id: btn.dataset.topup });
+      show("Top-up deleted.");
+    }
+    await refresh();
+  } catch (err) { show(esc(err.message), false); }
+  finally { btn.disabled = false; }
+});
+
+// ---- Chats of a client (read only)
+const fmtDate = (d) => new Date(d).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" });
+$("clients").addEventListener("toggle", async (e) => {
+  const det = e.target;
+  if (!det.classList?.contains("chats") || !det.open) return;
+  const box = det.querySelector(".chatlist");
+  try {
+    const { chats } = await call("chats", { client_id: det.dataset.client });
+    det.querySelector("summary").textContent = `Chats (${chats.length})`;
+    box.className = "chatlist";
+    box.innerHTML = chats.length ? `<div class="tablewrap"><table>
+      <tr><th>Chat</th><th>Project</th><th>Messages</th><th>API cost</th><th>Last activity</th></tr>
+      ${chats.map((c) => `<tr class="chatrow" data-chat="${c.id}">
+        <td>${c.status !== "idle" ? '<span class="dot" title="working"></span>' : ""}${esc(c.title)}</td>
+        <td>${esc(c.project)}</td><td>${c.messages}</td><td>${eur(c.api_eur)}</td><td>${fmtDate(c.updated_at)}</td>
+      </tr>`).join("")}</table></div>` : '<p class="hint">No chats yet.</p>';
+  } catch (err) { box.textContent = err.message; }
+}, true);
+
+$("clients").addEventListener("click", (e) => {
+  const row = e.target.closest(".chatrow");
+  if (row) openChat(row.dataset.chat);
+});
+
+const blobs = [];
+async function fileUrl(conversation_id, file_id) {
+  const r = await fetch(API, {
+    method: "POST", headers: { "content-type": "application/json", "x-admin-password": pwd },
+    body: JSON.stringify({ action: "chat_file", conversation_id, file_id }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Error ${r.status}`);
+  const url = URL.createObjectURL(await r.blob());
+  blobs.push(url);
+  return url;
+}
+
+async function openChat(id) {
+  const v = document.createElement("div");
+  v.id = "viewer";
+  v.innerHTML = `<div class="panel"><div class="head"><h3>Loading…</h3><button class="ghost" id="vClose">Close</button></div><div class="body"></div></div>`;
+  document.body.append(v);
+  const close = () => { v.remove(); blobs.splice(0).forEach((u) => URL.revokeObjectURL(u)); };
+  v.addEventListener("click", (e) => { if (e.target === v || e.target.id === "vClose") close(); });
+  try {
+    const cv = await call("chat", { conversation_id: id });
+    v.querySelector("h3").textContent = cv.title;
+    v.querySelector(".body").innerHTML = (cv.messages ?? []).map((m, i) => m.role === "user"
+      ? `<div class="m user"><div class="who">Client</div><div class="txt">${esc(m.text)}</div></div>`
+      : `<div class="m"><div class="who">Assistant${m.cost_eur != null ? ` · ${eur(m.cost_eur)} charged` : ""}${m.changed_files ? ` · ${m.changed_files} project file(s) changed` : ""}</div>
+          <div class="txt">${esc(m.text || "(no text yet)")}</div>
+          ${m.steps?.length ? `<details><summary>${m.steps.length} steps</summary><ol>${m.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : ""}
+          ${m.files?.length ? `<div class="files">${m.files.map((f) => `<button class="ghost" data-file="${esc(f.file_id)}" data-name="${esc(f.filename)}">${/\.(png|jpe?g|gif|webp)$/i.test(f.filename) ? "🖼" : "⬇"} ${esc(f.filename)}</button>`).join("")}</div>` : ""}
+        </div>`).join("") || '<p class="hint">Empty chat.</p>';
+    v.querySelector(".body").addEventListener("click", async (e) => {
+      const b = e.target.closest("button[data-file]");
+      if (!b) return;
+      b.disabled = true;
+      try {
+        const url = await fileUrl(id, b.dataset.file);
+        if (/\.(png|jpe?g|gif|webp)$/i.test(b.dataset.name)) {
+          const img = document.createElement("img");
+          img.src = url; img.alt = b.dataset.name;
+          b.replaceWith(img);
+        } else {
+          const a = document.createElement("a");
+          a.href = url; a.download = b.dataset.name; a.click();
+          b.disabled = false;
+        }
+      } catch (err) { b.textContent = err.message; }
+    });
+  } catch (err) { v.querySelector("h3").textContent = err.message; }
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("viewer")?.querySelector("#vClose")?.click(); });
+
+$("create").onclick = async () => {
+  $("create").disabled = true;
+  try {
+    const { code } = await call("create_client", {
+      name: $("nName").value.trim(), workspace_id: $("nWs").value.trim(), api_key_id: $("nKey").value.trim(),
+    });
+    show(`Client created. Access code: <div class="code">${esc(code)}</div><p class="hint">It will never be shown again: send it now with the balance page link.</p>`);
+    $("nName").value = $("nWs").value = $("nKey").value = "";
+    await refresh();
+  } catch (e) { show(esc(e.message), false); }
+  finally { $("create").disabled = false; }
+};
+
+$("enter").onclick = async () => {
+  pwd = $("pwd").value;
+  $("loginErr").hidden = true;
+  try {
+    await call("list");
+    try { sessionStorage.setItem(KEY, pwd); } catch {}
+    $("login").hidden = true; $("app").hidden = false;
+    refresh();
+  } catch (e) { $("loginErr").textContent = e.message; $("loginErr").hidden = false; }
+};
+$("pwd").addEventListener("keydown", (e) => { if (e.key === "Enter") $("enter").click(); });
+$("refresh").onclick = () => refresh(true);
+$("logout").onclick = logout;
+
+if (pwd) { $("login").hidden = true; $("app").hidden = false; refresh(); }
+</script>
+</body>
+</html>
