@@ -375,7 +375,7 @@ function msgEl(m, live) {
 function fillMeta(el, m) {
   const meta = el.querySelector(".meta");
   const chips = (m.files ?? []).map((f) =>
-    `<button class="chip" data-out="${esc(f.file_id)}" data-name="${esc(f.filename)}">⬇ ${esc(f.filename)} <small>${size(f.size)}</small></button>`);
+    `<button class="chip" data-out="${esc(f.file_id)}" data-name="${esc(f.filename)}" title="${IMAGE.test(f.filename) || TEXT.test(f.filename) ? "Preview" : "Download"}">${IMAGE.test(f.filename) ? "🖼" : TEXT.test(f.filename) ? "📄" : "⬇"} ${esc(f.filename)} <small>${size(f.size)}</small></button>`);
   if (m.changed_files) chips.push(`<button class="chip" data-showfiles="1">📁 ${m.changed_files} project file${m.changed_files > 1 ? "s" : ""} updated</button>`);
   if (m.cost_eur != null) chips.push(`<span class="tag" title="Cost of this answer">${eur(m.cost_eur)}</span>`);
   meta.innerHTML = chips.join("");
@@ -531,16 +531,22 @@ async function upload(list, extract) {
 async function fileUrl(path) { return (await api("download", { project_id: projectId, path })).url; }
 function saveUrl(url, name) { const a = document.createElement("a"); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove(); }
 
+const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+const TEXT = /\.(json|lang|txt|md|js|ts|mcfunction|material|fragment|vertex|csv|xml|html|log)$/i;
+
 async function preview(path) {
-  const name = path.split("/").pop();
   $("mTitle").textContent = path; $("mBody").innerHTML = '<span class="muted">Loading…</span>'; $("modal").hidden = false;
-  const url = await fileUrl(path);
+  await showPreview(path, path.split("/").pop(), await fileUrl(path));
+}
+// Shows an image or a text file in the modal; url can be a signed URL or a blob: URL
+async function showPreview(title, name, url) {
+  $("mTitle").textContent = title; $("modal").hidden = false;
   $("mDl").onclick = () => saveUrl(url, name);
-  if (/\.(png|jpe?g|gif)$/i.test(name)) {
+  if (IMAGE.test(name)) {
     const img = new Image(); img.src = url; img.alt = name;
     img.onload = () => { img.style.width = Math.max(img.naturalWidth, Math.min(512, img.naturalWidth * 8)) + "px"; };
     $("mBody").innerHTML = ""; $("mBody").append(img);
-  } else if (/\.(json|lang|txt|md|js|ts|mcfunction|material|fragment|vertex|csv|xml|html)$/i.test(name)) {
+  } else if (TEXT.test(name)) {
     const t = await (await fetch(url)).text();
     $("mBody").innerHTML = `<pre>${esc(t.length > 300000 ? t.slice(0, 300000) + "\n…" : t)}</pre>`;
   } else {
@@ -697,8 +703,14 @@ $("convs").onclick = async (e) => {
 $("msgs").onclick = async (e) => {
   const out = e.target.closest("[data-out]");
   if (out) {
-    const r = await api("output", { conversation_id: convId, file_id: out.dataset.out }, true);
-    saveUrl(URL.createObjectURL(await r.blob()), out.dataset.name);
+    const name = out.dataset.name;
+    const canPreview = IMAGE.test(name) || TEXT.test(name);
+    if (canPreview) { $("mTitle").textContent = name; $("mBody").innerHTML = '<span class="muted">Loading…</span>'; $("modal").hidden = false; }
+    try {
+      const r = await api("output", { conversation_id: convId, file_id: out.dataset.out }, true);
+      const url = URL.createObjectURL(await r.blob());
+      canPreview ? await showPreview(name, name, url) : saveUrl(url, name);
+    } catch (err) { $("modal").hidden = true; toast(err.message, true); }
   }
   if (e.target.closest("[data-showfiles]")) showFiles(true);
 };
