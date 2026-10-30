@@ -36,7 +36,12 @@
   #login { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; }
   #login h1 { font-size: 24px; margin: 0 0 6px; }
   .field { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; }
-  #login .btn.primary { width: 100%; margin-top: 12px; padding: 11px; }
+  #login .btn.primary, #setpw .btn.primary { width: 100%; margin-top: 12px; padding: 11px; }
+  #login .field + .field, #setpw .field + .field { margin-top: 8px; }
+  #login .link { margin-top: 14px; }
+  #setpw { position: fixed; inset: 0; z-index: 30; background: var(--bg); overflow-y: auto; }
+  #setpw > div { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; }
+  #setpw h1 { font-size: 22px; margin: 0 0 6px; }
   .err { color: var(--bad); margin-top: 10px; }
 
   /* layout */
@@ -190,10 +195,34 @@
 
 <section id="login">
   <h1>Olivares Studio</h1>
-  <p class="muted">Enter your access code.</p>
-  <input id="code" class="field" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
-  <button id="go" class="btn primary">Sign in</button>
+  <form id="pwForm">
+    <p class="muted">Sign in to your workspace.</p>
+    <input id="user" class="field" placeholder="Username" autocomplete="username" autocapitalize="off" spellcheck="false">
+    <input id="pass" class="field" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="btn primary" type="submit">Sign in</button>
+    <button class="link" type="button" id="useCode">I have an access code</button>
+  </form>
+  <form id="codeForm" hidden>
+    <p class="muted">Enter your access code.</p>
+    <input id="code" class="field" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
+    <button id="go" class="btn primary" type="submit">Sign in</button>
+    <button class="link" type="button" id="usePw">Sign in with a password</button>
+  </form>
   <div class="err" id="loginErr" hidden></div>
+</section>
+
+<section id="setpw" hidden>
+  <div>
+    <h1>Choose your password</h1>
+    <p class="muted">From now on you sign in with this username and password. Your access code stops working.</p>
+    <form id="setpwForm">
+      <input id="newUser" class="field" placeholder="Username (letters, digits, . _ -)" autocomplete="username" autocapitalize="off" spellcheck="false">
+      <input id="newPass" class="field" type="password" placeholder="Password (8 characters or more)" autocomplete="new-password">
+      <input id="newPass2" class="field" type="password" placeholder="Password again" autocomplete="new-password">
+      <button class="btn primary" type="submit">Save and continue</button>
+    </form>
+    <div class="err" id="setpwErr" hidden></div>
+  </div>
 </section>
 
 <div id="app" hidden>
@@ -330,6 +359,7 @@ function md(text) {
 async function loadList() {
   const d = await api("list");
   $("who").textContent = d.name;
+  if (d.must_set_password) askPassword(d);
   projects = d.projects; convs = d.conversations;
   if (!projects.length) {
     const p = await api("create_project", { name: "My first project" });
@@ -728,9 +758,39 @@ async function signIn() {
   }
 }
 
-$("go").onclick = () => { code = $("code").value.trim().toUpperCase(); if (code) signIn(); };
-$("code").addEventListener("keydown", (e) => { if (e.key === "Enter") $("go").click(); });
-$("logout").onclick = () => { store.set(null); location.reload(); };
+$("codeForm").onsubmit = (e) => { e.preventDefault(); code = $("code").value.trim().toUpperCase(); if (code) signIn(); };
+$("useCode").onclick = () => { $("pwForm").hidden = true; $("codeForm").hidden = false; $("loginErr").hidden = true; $("code").focus(); };
+$("usePw").onclick = () => { $("codeForm").hidden = true; $("pwForm").hidden = false; $("loginErr").hidden = true; $("user").focus(); };
+$("pwForm").onsubmit = async (e) => {
+  e.preventDefault();
+  $("loginErr").hidden = true;
+  const r = await fetch(`${BASE}?action=login`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: $("user").value.trim(), password: $("pass").value }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { $("loginErr").textContent = d.error || `Error ${r.status}`; $("loginErr").hidden = false; return; }
+  code = d.token; signIn();
+};
+// The admin asked this client to choose a password: shown once after signing in with the code
+function askPassword(d) {
+  if (!$("setpw").hidden) return;
+  $("newUser").value = d.login || String(d.name || "").toLowerCase().replace(/[^a-z0-9._-]/g, "");
+  $("setpw").hidden = false;
+  $("newPass").focus();
+}
+$("setpwForm").onsubmit = async (e) => {
+  e.preventDefault();
+  $("setpwErr").hidden = true;
+  try {
+    if ($("newPass").value !== $("newPass2").value) throw new Error("The two passwords are different.");
+    const d = await api("set_password", { login: $("newUser").value.trim(), password: $("newPass").value });
+    code = d.token; store.set(code);
+    $("setpw").hidden = true;
+    toast("Password saved. Sign in with it from now on.");
+  } catch (err) { $("setpwErr").textContent = err.message; $("setpwErr").hidden = false; }
+};
+$("logout").onclick = async () => { try { await api("logout"); } catch {} store.set(null); location.reload(); };
 $("menuBtn").onclick = () => $("side").classList.toggle("open");
 const closeSide = () => $("side").classList.remove("open");
 $("sideClose").onclick = closeSide;

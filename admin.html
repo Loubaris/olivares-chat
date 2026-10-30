@@ -155,7 +155,7 @@ function card(c) {
     <div class="top">
       <div>
         <h3>${esc(c.name)} <span class="pill ${c.enabled ? "on" : "off"}">${c.enabled ? "active" : c.active ? "balance used up" : "disabled"}</span></h3>
-        <div class="meta">${esc(c.workspace_id)} · ${c.api_key_id ? esc(c.api_key_id) + " (key: " + esc(c.key_status ?? "?") + ")" : "no key linked: auto cut-off off"}</div>
+        <div class="meta">${c.has_password ? `signs in as <b>${esc(c.login)}</b>` : c.must_set_password ? "will choose a password at next sign-in" : "signs in with an access code"} · ${esc(c.workspace_id)} · ${c.api_key_id ? esc(c.api_key_id) + " (key: " + esc(c.key_status ?? "?") + ")" : "no key linked: auto cut-off off"}</div>
       </div>
     </div>
     <div class="stats">
@@ -176,6 +176,7 @@ function card(c) {
     <p class="hint tCalc">Type the amount paid: the credit to give is computed from your margin.</p>
     <div class="actions">
       <button class="ghost" data-act="reset">New access code</button>
+      <button class="ghost" data-act="askpw" ${c.must_set_password ? "disabled" : ""}>${c.must_set_password ? "Password requested" : c.has_password ? "Ask for a new password" : "Ask to set a password"}</button>
       <button class="${c.active ? "danger" : "ghost"}" data-act="toggle" data-active="${c.active}">${c.active ? "Disable" : "Enable"}</button>
     </div>
     <details class="chats" data-client="${c.id}">
@@ -248,6 +249,9 @@ $("clients").addEventListener("click", async (e) => {
       if (!armed(btn)) return;
       const { code } = await call("reset_code", { client_id: id });
       show(`New code (the old one no longer works): <div class="code">${esc(code)}</div><p class="hint">It will never be shown again: send it now.</p>`);
+    } else if (btn.dataset.act === "askpw") {
+      await call("request_password", { client_id: id });
+      show("Done: at their next sign-in they choose a username and password, then their access code stops working.");
     } else if (btn.dataset.act === "toggle") {
       if (!armed(btn)) return;
       await call("set_active", { client_id: id, active: btn.dataset.active !== "true" });
