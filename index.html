@@ -414,6 +414,7 @@ const EXAMPLES = [
   "Add a custom item \"ruby_sword\" (texture, attack damage, durability, crafting recipe) and check it loads.",
   "Write a Script API feature: when a player sneaks for 3 seconds, give them a short speed boost. Use the stable modules and test it.",
   "Check my add-on against the Marketplace rules (manifests, naming, content policies) and tell me what to fix before submission.",
+  "Build a small medieval village on a flat world (5 houses, a well, paths), set the spawn in the middle and give me the .mcworld.",
   "Render previews of every entity model in the project.",
 ];
 function showHelp() {
@@ -424,6 +425,7 @@ function showHelp() {
     <ul>
       <li>Reads and edits the files in the Files panel: behavior packs, resource packs, scripts. Every file it changes is marked <span class="ai">AI</span>.</li>
       <li>Builds complete content: entities, items, blocks, recipes, loot tables, spawn rules, functions, animations, animation controllers, render controllers, attachables, particles, lang files.</li>
+      <li>Builds maps: structures (.mcstructure), builds made with commands and functions, world settings, and complete worlds you download as a <b>.mcworld</b> and open in Minecraft. It can also modify a map you upload (.mcworld).</li>
       <li>Creates entity models (.geo.json) and their textures, and pixel-art icons.</li>
       <li>Writes Script API code (@minecraft/server, server-ui…), stable or beta.</li>
     </ul>
@@ -431,7 +433,7 @@ function showHelp() {
     <ul>
       <li><b>Official vanilla reference</b>: Mojang's own packs and the full Script API definitions, to copy the exact current formats.</li>
       <li><b>JSON validation</b>: checks every file against the Bedrock schemas.</li>
-      <li><b>Bedrock Dedicated Server</b>: loads your packs in a real server, spawns or runs what it made, and reads the errors (Beta APIs and preview builds supported).</li>
+      <li><b>Bedrock Dedicated Server</b>: loads your packs in a real server, spawns or runs what it made, and reads the errors (Beta APIs and preview builds supported). It also builds worlds there and exports them as .mcworld maps.</li>
       <li><b>3D preview</b>: renders models, animations and held items to images you can open in the chat.</li>
       <li><b>Marketplace rules</b>: the full partner guidelines (submission, packaging, store art, content policies).</li>
       <li><b>Official docs</b>: learn.microsoft.com, wiki.bedrock.dev and the Script API reference.</li>
@@ -443,7 +445,7 @@ function showHelp() {
     </ul>
     <h4>Try one</h4>
     ${EXAMPLES.map((e, i) => `<button class="btn ex" data-ex="${i}">${esc(e)}</button>`).join("")}
-    <p class="note">Tips: upload your packs first (.zip or .mcaddon are unpacked). One chat per topic keeps answers fast and cheaper. Typing <code>/help</code> or clicking ? is free.</p>
+    <p class="note">Tips: upload your packs or maps first (.zip, .mcaddon and .mcworld are unpacked). One chat per topic keeps answers fast and cheaper. Typing <code>/help</code> or clicking ? is free.</p>
   </div>`;
   $("modal").hidden = false;
 }
