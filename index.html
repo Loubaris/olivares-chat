@@ -162,6 +162,13 @@
   .mbody { overflow: auto; padding: 12px; }
   .mbody img { image-rendering: pixelated; max-width: 100%; min-width: 128px; background: repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
   .mbody pre { margin: 0; font-size: 12.5px; white-space: pre; }
+  .help { max-width: 680px; font-size: 14px; }
+  .help h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 6px; }
+  .help h4:first-child { margin-top: 0; }
+  .help ul { margin: 0; padding-left: 20px; }
+  .help li { margin: 3px 0; }
+  .help .ex { display: block; width: 100%; text-align: left; margin: 6px 0; padding: 8px 10px; }
+  .help .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
 
   @media (max-width: 960px) {
     #app, #app.nofiles { grid-template-columns: minmax(0, 1fr); }
@@ -209,6 +216,7 @@
       <button class="icon" id="menuBtn" aria-label="Menu">☰</button>
       <h2 id="title"></h2>
       <div class="seg" id="tabs"><button data-tab="chat" class="on">Chat</button><button data-tab="files">Files</button></div>
+      <button class="btn" id="helpBtn" title="What the assistant can do (free)">?</button>
       <button class="btn" id="filesToggle">📁 Files</button>
     </div>
 
@@ -399,8 +407,50 @@ async function openConv(id) {
 function lastReply() { const all = $("msgs").querySelectorAll(".msg.assistant"); return all[all.length - 1]; }
 function setBusy(b) { busy = b; $("send").disabled = b; $("hint").textContent = b ? "Working… you can leave this page, it keeps going." : ""; }
 
+// ------------------------------------------------------------ help (local, never sent to the assistant)
+const EXAMPLES = [
+  "Create a new add-on: a hostile entity \"mutant_chicken\" with its model, texture, walk and attack animations, spawn rules and loot, then test it in the server.",
+  "Read my packs and list everything that is broken or risky (manifests, missing textures, lang keys, invalid JSON).",
+  "Add a custom item \"ruby_sword\" (texture, attack damage, durability, crafting recipe) and check it loads.",
+  "Write a Script API feature: when a player sneaks for 3 seconds, give them a short speed boost. Use the stable modules and test it.",
+  "Check my add-on against the Marketplace rules (manifests, naming, content policies) and tell me what to fix before submission.",
+  "Render previews of every entity model in the project.",
+];
+function showHelp() {
+  $("mTitle").textContent = "What the assistant can do";
+  $("mDl").hidden = true;
+  $("mBody").innerHTML = `<div class="help">
+    <h4>It works on your project</h4>
+    <ul>
+      <li>Reads and edits the files in the Files panel: behavior packs, resource packs, scripts. Every file it changes is marked <span class="ai">AI</span>.</li>
+      <li>Builds complete content: entities, items, blocks, recipes, loot tables, spawn rules, functions, animations, animation controllers, render controllers, attachables, particles, lang files.</li>
+      <li>Creates entity models (.geo.json) and their textures, and pixel-art icons.</li>
+      <li>Writes Script API code (@minecraft/server, server-ui…), stable or beta.</li>
+    </ul>
+    <h4>Its tools</h4>
+    <ul>
+      <li><b>Official vanilla reference</b>: Mojang's own packs and the full Script API definitions, to copy the exact current formats.</li>
+      <li><b>JSON validation</b>: checks every file against the Bedrock schemas.</li>
+      <li><b>Bedrock Dedicated Server</b>: loads your packs in a real server, spawns or runs what it made, and reads the errors (Beta APIs and preview builds supported).</li>
+      <li><b>3D preview</b>: renders models, animations and held items to images you can open in the chat.</li>
+      <li><b>Marketplace rules</b>: the full partner guidelines (submission, packaging, store art, content policies).</li>
+      <li><b>Official docs</b>: learn.microsoft.com, wiki.bedrock.dev and the Script API reference.</li>
+    </ul>
+    <h4>What it cannot do</h4>
+    <ul>
+      <li>Play the game: rendering, UI, sounds and game feel must be tested by you. It always tells you what to check in game.</li>
+      <li>Reach other websites, or anything outside your project.</li>
+    </ul>
+    <h4>Try one</h4>
+    ${EXAMPLES.map((e, i) => `<button class="btn ex" data-ex="${i}">${esc(e)}</button>`).join("")}
+    <p class="note">Tips: upload your packs first (.zip or .mcaddon are unpacked). One chat per topic keeps answers fast and cheaper. Typing <code>/help</code> or clicking ? is free.</p>
+  </div>`;
+  $("modal").hidden = false;
+}
+
 async function send() {
   const text = $("input").value.trim();
+  if (/^\/(help|aide)$/i.test(text)) { $("input").value = ""; autoGrow(); showHelp(); return; }
   if (busy || !text) return;
   if ($("msgs").querySelector(".empty")) $("msgs").innerHTML = "";
   $("msgs").append(msgEl({ role: "user", text }));
@@ -541,6 +591,7 @@ async function preview(path) {
 // Shows an image or a text file in the modal; url can be a signed URL or a blob: URL
 async function showPreview(title, name, url) {
   $("mTitle").textContent = title; $("modal").hidden = false;
+  $("mDl").hidden = false;
   $("mDl").onclick = () => saveUrl(url, name);
   if (IMAGE.test(name)) {
     const img = new Image(); img.src = url; img.alt = name;
@@ -758,6 +809,13 @@ $("dlZip").onclick = async () => {
   } catch (err) { toast(err.message, true); }
 };
 $("mClose").onclick = () => { $("modal").hidden = true; };
+$("helpBtn").onclick = showHelp;
+$("mBody").addEventListener("click", (e) => {
+  const ex = e.target.closest("[data-ex]");
+  if (!ex) return;
+  $("modal").hidden = true; setView("chat");
+  $("input").value = EXAMPLES[+ex.dataset.ex]; autoGrow(); $("input").focus();
+});
 $("modal").onclick = (e) => { if (e.target.id === "modal") $("modal").hidden = true; };
 
 if (code) signIn();
