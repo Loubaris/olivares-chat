@@ -133,7 +133,21 @@
   .fstatus { padding: 6px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
 
   /* usage */
-  #usageView { flex: 1; overflow-y: auto; padding: 24px 16px 40px; }
+  #usageView, #memoryView { flex: 1; overflow-y: auto; padding: 24px 16px 40px; }
+  #memoryView .inner { max-width: 900px; }
+  .memgrid { display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 16px; margin-top: 14px; }
+  .memlist { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 6px; align-self: start; }
+  .memlist button { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 8px; padding: 7px 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+  .memlist button:hover, .memlist button.on { background: var(--bubble); }
+  .memlist .grp { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 8px 8px 2px; }
+  .memedit { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 12px; min-width: 0; }
+  .memedit textarea { width: 100%; min-height: 50vh; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+    background: var(--bg); color: var(--text); font: 13px/1.5 ui-monospace, Consolas, monospace; }
+  .memedit img { max-width: 100%; border-radius: 8px; }
+  .memedit .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .memedit .row b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width: 700px) { .memgrid { grid-template-columns: minmax(0, 1fr); } }
   #usageView .inner { max-width: 900px; }
   .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 16px; }
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
@@ -236,6 +250,7 @@
     <button class="btn" id="newChat">＋ New chat</button>
     <div class="lbl">Chats</div>
     <div id="convs"></div>
+    <button class="navbtn" id="navMemory">🧠 Memory</button>
     <button class="navbtn" id="navUsage">📊 Usage &amp; billing</button>
     <div class="bal">
       <span class="muted">Balance</span>
@@ -269,6 +284,7 @@
     </div>
 
     <div id="usageView" hidden><div class="inner" id="usage"></div></div>
+    <div id="memoryView" hidden><div class="inner" id="memory"></div></div>
   </main>
 
   <aside id="files">
@@ -306,6 +322,7 @@ const eur = (n) => (n ?? 0).toLocaleString("en-GB", { style: "currency", currenc
 const size = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
 const store = { get() { try { return localStorage.getItem(KEY); } catch { return null; } }, set(v) { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch {} } };
 
+let memoryId = null, memFiles = [], memSel = null;
 let code = store.get(), projects = [], convs = [], projectId = null, convId = null, files = [];
 let selFolder = "", open = new Set([""]), pollTimer = null, busy = false, view = "chat";
 
@@ -360,7 +377,7 @@ async function loadList() {
   const d = await api("list");
   $("who").textContent = d.name;
   if (d.must_set_password) askPassword(d);
-  projects = d.projects; convs = d.conversations;
+  projects = d.projects; convs = d.conversations; memoryId = d.memory_id;
   if (!projects.length) {
     const p = await api("create_project", { name: "My first project" });
     projects = [p];
@@ -392,8 +409,8 @@ async function loadBalance() {
 // ------------------------------------------------------------ chat
 function setView(v) {
   view = v;
-  $("chatView").hidden = v !== "chat"; $("usageView").hidden = v !== "usage";
-  $("navUsage").classList.toggle("active", v === "usage");
+  $("chatView").hidden = v !== "chat"; $("usageView").hidden = v !== "usage"; $("memoryView").hidden = v !== "memory";
+  $("navUsage").classList.toggle("active", v === "usage"); $("navMemory").classList.toggle("active", v === "memory");
   $("side").classList.remove("open");
 }
 function emptyState() {
@@ -420,6 +437,7 @@ function fillMeta(el, m) {
   const meta = el.querySelector(".meta");
   const chips = (m.files ?? []).map((f) =>
     `<button class="chip" data-out="${esc(f.file_id)}" data-name="${esc(f.filename)}" title="${IMAGE.test(f.filename) || TEXT.test(f.filename) ? "Preview" : "Download"}">${IMAGE.test(f.filename) ? "🖼" : TEXT.test(f.filename) ? "📄" : "⬇"} ${esc(f.filename)} <small>${size(f.size)}</small></button>`);
+  if (m.memory_changed) chips.push(`<button class="chip" data-memory="1">🧠 memory updated</button>`);
   if (m.changed_files) chips.push(`<button class="chip" data-showfiles="1">📁 ${m.changed_files} project file${m.changed_files > 1 ? "s" : ""} updated</button>`);
   if (m.cost_eur != null) chips.push(`<span class="tag" title="Cost of this answer">${eur(m.cost_eur)}</span>`);
   meta.innerHTML = chips.join("");
@@ -452,6 +470,7 @@ const EXAMPLES = [
   "Check my add-on against the Marketplace rules (manifests, naming, content policies) and tell me what to fix before submission.",
   "Build a small medieval village on a flat world (5 houses, a well, paths), set the spawn in the middle and give me the .mcworld.",
   "Render previews of every entity model in the project.",
+  "Learn the vegetation of the map I uploaded (trees, bushes, flowers, how they are spread) and remember it for my next maps.",
 ];
 function showHelp() {
   $("mTitle").textContent = "What the assistant can do";
@@ -472,6 +491,8 @@ function showHelp() {
       <li><b>Bedrock Dedicated Server</b>: loads your packs in a real server, spawns or runs what it made, and reads the errors (Beta APIs and preview builds supported). It also builds worlds there and exports them as .mcworld maps.</li>
       <li><b>3D preview</b>: renders models, animations and held items to images you can open in the chat.</li>
       <li><b>Build renders</b>: ray-traced views (vanilla textures, sun, shadows) of its structures and of any area of a world, read block by block from a real server. It looks at them to check and fix its builds, and shares them with you.</li>
+      <li><b>Memory</b>: it remembers your preferences and decisions across all your projects, plus notes for each project (🧠 Memory, editable).</li>
+      <li><b>Learn</b>: say "learn from this" on a build, a map area, a pack or textures (e.g. "learn the vegetation of this map"): it measures it, keeps examples, and reuses that style later.</li>
       <li><b>Marketplace rules</b>: the full partner guidelines (submission, packaging, store art, content policies).</li>
       <li><b>Official docs</b>: learn.microsoft.com, wiki.bedrock.dev and the Script API reference.</li>
     </ul>
@@ -544,6 +565,7 @@ function startPolling() {
       await openConv(id);
       loadList(); loadBalance();
       if (d.changed_files) { await loadTree(); toast(`${d.changed_files} file(s) updated`); }
+      else if (d.memory_changed) toast("Memory updated");
     } catch (e) {
       // gone (deleted elsewhere) or the server keeps failing: say so instead of waiting forever
       if (e.status === 404 || e.status === 403 || ++fails >= 8) {
@@ -655,6 +677,80 @@ async function showPreview(title, name, url) {
   } else {
     $("mBody").innerHTML = `<span class="muted">No preview for this file type. Use Download.</span>`;
   }
+}
+
+// ------------------------------------------------------------ memory
+// The client's shared memory (all projects) and this project's notes; the assistant reads them in every chat
+async function showMemory(select) {
+  stopPolling(); setView("memory"); $("title").textContent = "Memory";
+  $("memory").innerHTML = '<p class="muted">Loading…</p>';
+  try { memFiles = (await api("tree", { project_id: memoryId })).files; }
+  catch (e) { $("memory").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  const proj = projects.find((p) => p.id === projectId);
+  const hasProjMem = files.some((f) => f.path === "PROJECT_MEMORY.md");
+  const learned = memFiles.filter((f) => f.path.startsWith("learned/"));
+  const other = memFiles.filter((f) => !f.path.startsWith("learned/") && f.path !== "MEMORY.md");
+  const item = (scope, path, label) => `<button data-scope="${scope}" data-path="${esc(path)}" title="${esc(path)}">${esc(label ?? path)}</button>`;
+  $("memory").innerHTML = `
+    <p class="muted" style="margin-top:0">What the assistant remembers. <b>Your memory</b> is shared by all your projects:
+      your preferences and what it learned (ask it to "learn from" a build, a map or a pack). <b>Project notes</b> are for
+      ${esc(proj?.name || "this project")} only. It reads both at the start of every chat; you can edit them here.</p>
+    <div class="memgrid">
+      <div class="memlist">
+        <div class="grp">Your memory</div>
+        ${item("mem", "MEMORY.md", "MEMORY.md" + (memFiles.some((f) => f.path === "MEMORY.md") ? "" : " (new)"))}
+        ${learned.length ? `<div class="grp">Learned</div>${learned.map((f) => item("mem", f.path, f.path.slice(8))).join("")}` : ""}
+        ${other.map((f) => item("mem", f.path)).join("")}
+        <div class="grp">Project notes</div>
+        ${item("proj", "PROJECT_MEMORY.md", "PROJECT_MEMORY.md" + (hasProjMem ? "" : " (new)"))}
+      </div>
+      <div class="memedit" id="memEdit"><span class="muted">Select a file.</span></div>
+    </div>`;
+  $("memory").querySelectorAll(".memlist button").forEach((b) => b.onclick = () => openMem(b.dataset.scope, b.dataset.path));
+  const [scope, path] = select ?? ["mem", "MEMORY.md"];
+  openMem(scope, path);
+}
+async function openMem(scope, path) {
+  memSel = [scope, path];
+  $("memory").querySelectorAll(".memlist button").forEach((b) => b.classList.toggle("on", b.dataset.scope === scope && b.dataset.path === path));
+  const pid = scope === "mem" ? memoryId : projectId;
+  const exists = (scope === "mem" ? memFiles : files).some((f) => f.path === path);
+  const box = $("memEdit");
+  const head = `<div class="row"><b>${esc(scope === "mem" ? "memory/" + path : path)}</b>
+    ${TEXT.test(path) ? '<button class="btn primary" id="memSave">Save</button>' : '<button class="btn" id="memDl">⬇ Download</button>'}
+    ${exists ? '<button class="btn" id="memDel">Delete</button>' : ""}</div>`;
+  box.innerHTML = head + '<span class="muted">Loading…</span>';
+  let url = null, text = "";
+  if (exists) url = (await api("download", { project_id: pid, path })).url;
+  if (TEXT.test(path)) {
+    if (url) text = await (await fetch(url)).text();
+    else if (path === "MEMORY.md") text = "# Memory\n\n## About me\n- \n\n## Learned topics\n";
+    else text = "# Project notes\n\n- Goal: \n- Conventions (namespace, folders): \n- Decisions: \n- To do: \n";
+    box.innerHTML = head + `<textarea id="memText" spellcheck="false"></textarea>`;
+    $("memText").value = text;
+    $("memSave").onclick = async () => {
+      $("memSave").disabled = true;
+      try {
+        const r = await fetch(`${BASE}?action=upload`, {
+          method: "POST", headers: { "x-code": code, "x-project": pid, "x-path": encodeURIComponent(path), "x-extract": "0" },
+          body: new Blob([$("memText").value], { type: "text/markdown" }),
+        });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Error ${r.status}`);
+        toast("Saved: the assistant uses it from the next message");
+        if (scope === "proj") await loadTree();
+        await showMemory([scope, path]);
+      } catch (e) { toast(e.message, true); $("memSave").disabled = false; }
+    };
+  } else {
+    box.innerHTML = head + (IMAGE.test(path) && url ? `<img src="${esc(url)}" alt="${esc(path)}">` : '<span class="muted">No preview for this file type.</span>');
+    $("memDl").onclick = () => url && saveUrl(url, path.split("/").pop());
+  }
+  if (exists) $("memDel").onclick = async (e) => {
+    if (!armed(e.currentTarget)) return;
+    await api("delete_files", { project_id: pid, path });
+    if (scope === "proj") await loadTree();
+    showMemory();
+  };
 }
 
 // two-click confirm, since dialogs can be blocked
@@ -798,6 +894,7 @@ $("scrim").onclick = closeSide;
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSide(); });
 $("newChat").onclick = newChat;
 $("navUsage").onclick = showUsage;
+$("navMemory").onclick = () => showMemory();
 $("send").onclick = send;
 $("input").addEventListener("input", autoGrow);
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
@@ -850,6 +947,7 @@ $("msgs").onclick = async (e) => {
     } catch (err) { $("modal").hidden = true; toast(err.message, true); }
   }
   if (e.target.closest("[data-showfiles]")) showFiles(true);
+  if (e.target.closest("[data-memory]")) showMemory();
 };
 
 $("tree").onclick = async (e) => {
