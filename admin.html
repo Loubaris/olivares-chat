@@ -314,7 +314,7 @@ async function openChat(id) {
     v.querySelector("h3").textContent = cv.title;
     v.querySelector(".body").innerHTML = (cv.messages ?? []).map((m, i) => m.role === "user"
       ? `<div class="m user"><div class="who">Client</div><div class="txt">${esc(m.text)}</div></div>`
-      : `<div class="m"><div class="who">Assistant${m.effort ? ` · ${esc(m.effort)} effort` : ""}${m.cost_eur != null ? ` · ${eur(m.cost_eur)} charged` : ""}${m.changed_files ? ` · ${m.changed_files} project file(s) changed` : ""}</div>
+      : `<div class="m"><div class="who">Assistant${m.effort ? ` · ${esc(m.effort)} effort` : ""}${m.speed === "fast" ? " · fast" : ""}${m.cost_eur != null ? ` · ${eur(m.cost_eur)} charged` : ""}${m.changed_files ? ` · ${m.changed_files} project file(s) changed` : ""}</div>
           <div class="txt">${esc(m.text || "(no text yet)")}</div>
           ${m.steps?.length ? `<details><summary>${m.steps.length} steps</summary><ol>${m.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : ""}
           ${m.files?.length ? `<div class="files">${m.files.map((f) => `<button class="ghost" data-file="${esc(f.file_id)}" data-name="${esc(f.filename)}">${/\.(png|jpe?g|gif|webp)$/i.test(f.filename) ? "🖼" : "⬇"} ${esc(f.filename)}</button>`).join("")}</div>` : ""}

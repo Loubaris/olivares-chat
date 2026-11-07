@@ -113,6 +113,15 @@
   .sendrow { display: flex; align-items: center; gap: 6px; flex: none; }
   #effort { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 5px 6px; font: inherit; font-size: 13px; }
   #effort:hover { border-color: var(--faint); }
+  #composer .row { flex-wrap: wrap; }
+  #hint { flex: 1 1 180px; }
+  #fast { padding: 5px 8px; font-size: 13px; }
+  #fast.on { border-color: var(--accent); color: var(--accent); }
+  #stop { border-color: var(--bad); color: var(--bad); }
+  #stop:disabled { opacity: .6; cursor: default; }
+  details.steps img.sthumb { display: block; max-width: min(320px, 100%); max-height: 180px; margin: 4px 0 6px; border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; }
+  .liveimg img { display: block; max-width: min(360px, 100%); max-height: 220px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; }
+  .confirm { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
   /* files */
   aside#files { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -288,7 +297,9 @@
                 <option value="xhigh">Extra high effort</option>
                 <option value="max">Max effort</option>
               </select>
+              <button class="btn" id="fast" type="button" aria-pressed="false" title="Fast mode: answers faster, about twice the price">⚡ Fast</button>
               <button class="btn primary" id="send">Send</button>
+              <button class="btn" id="stop" type="button" title="Stop the assistant now" hidden>■ Stop</button>
             </span>
           </div>
         </div>
@@ -348,11 +359,46 @@ function savedEffort() {
 }
 function effortHint() {
   if (busy) return;
-  const e = $("effort").value;
-  $("hint").textContent = convEffort && e !== convEffort
-    ? `New effort: the assistant restarts with the chat's history (a bit slower).`
-    : "";
+  const changed = convEffort && ($("effort").value !== convEffort || (fast ? "fast" : "standard") !== convSpeed);
+  $("hint").textContent = changed ? "New settings: the assistant restarts with the chat's history (a bit slower)." : "";
 }
+
+// Fast mode, like the effort: per message, the open chat's assistant runs with one setting
+let convSpeed = null, fast = false;
+function setFast(on) {
+  fast = on; $("fast").classList.toggle("on", on); $("fast").setAttribute("aria-pressed", String(on));
+  effortHint();
+}
+function confirmFast() {
+  return new Promise((resolve) => {
+    $("mTitle").textContent = "⚡ Fast mode"; $("mDl").hidden = true;
+    $("mBody").innerHTML = `<div class="help">
+      <p><b>⚠ About twice the price.</b> Fast mode writes up to about 2.5× faster, but every message costs about <b>2×</b> more.</p>
+      <p class="note">Use it when you are waiting on the answer. It stays on for the next messages until you turn it off.</p>
+      <div class="confirm"><button class="btn" id="fastNo">Cancel</button><button class="btn primary" id="fastYes">Turn on fast mode</button></div></div>`;
+    $("modal").hidden = false;
+    const done = (v) => { $("modal").hidden = true; resolve(v); };
+    $("fastYes").onclick = () => done(true); $("fastNo").onclick = () => done(false);
+  });
+}
+
+// Images the assistant looked at during a turn (renders, map views): thumbnails in the steps, click to enlarge
+const stepImgUrls = new Map();
+function stepImgUrl(id) {
+  if (!stepImgUrls.has(id)) {
+    const p = api("step_image", { conversation_id: convId, id }).then((d) => d.url);
+    p.catch(() => stepImgUrls.delete(id));
+    stepImgUrls.set(id, p);
+  }
+  return stepImgUrls.get(id);
+}
+function loadThumbs(root) {
+  root.querySelectorAll("img[data-stepimg]:not([src])").forEach(async (img) => {
+    try { img.src = await stepImgUrl(img.dataset.stepimg); } catch { img.remove(); }
+  });
+}
+const stepImg = (id) => `<img class="sthumb" data-stepimg="${esc(id)}" alt="Image the assistant looked at">`;
+const imgCount = (n) => n ? ` · ${n} image${n > 1 ? "s" : ""}` : "";
 
 async function api(action, body, raw) {
   const r = await fetch(`${BASE}?action=${action}`, {
@@ -452,12 +498,15 @@ function msgEl(m, live) {
   el.className = "msg " + m.role;
   if (m.role === "user") { el.innerHTML = `<div class="body">${esc(m.text)}</div>`; return el; }
   const steps = m.steps ?? [];
+  const imgs = new Map((m.step_images ?? []).map((x) => [x.step, x.id]));
   el.innerHTML = `
-    <details class="steps" ${steps.length ? "" : "hidden"}><summary>▸ <span class="n">${steps.length}</span> steps</summary>
-      <ol>${steps.map((s) => `<li title="${esc(s)}">${esc(s)}</li>`).join("")}</ol></details>
+    <details class="steps" ${steps.length ? "" : "hidden"}><summary>▸ <span class="n">${steps.length}</span> steps<span class="ni">${imgCount(imgs.size)}</span></summary>
+      <ol>${steps.map((s, i) => `<li title="${esc(s)}">${esc(s)}${imgs.has(i) ? stepImg(imgs.get(i)) : ""}</li>`).join("")}</ol></details>
     <div class="md">${md(m.text || "")}</div>
     <div class="live" ${live ? "" : "hidden"}><span class="spin"></span><span>Starting…</span></div>
+    <div class="liveimg" hidden></div>
     <div class="meta"></div>`;
+  el.querySelector("details.steps").addEventListener("toggle", (e) => { if (e.target.open) loadThumbs(e.target); });
   fillMeta(el, m);
   return el;
 }
@@ -468,6 +517,7 @@ function fillMeta(el, m) {
   if (m.memory_changed) chips.push(`<button class="chip" data-memory="1">🧠 memory updated</button>`);
   if (m.changed_files) chips.push(`<button class="chip" data-showfiles="1">📁 ${m.changed_files} project file${m.changed_files > 1 ? "s" : ""} updated</button>`);
   if (m.effort) chips.push(`<span class="tag" title="Effort of this answer">${esc(EFFORT_NAMES[m.effort] ?? m.effort)} effort</span>`);
+  if (m.speed === "fast") chips.push(`<span class="tag" title="Fast mode: about twice the price">⚡ Fast</span>`);
   if (m.cost_eur != null) chips.push(`<span class="tag" title="Cost of this answer">${eur(m.cost_eur)}</span>`);
   meta.innerHTML = chips.join("");
   meta.hidden = !chips.length;
@@ -481,21 +531,24 @@ async function openConv(id) {
   const d = await api("get", { conversation_id: id });
   if (d.project_id !== projectId) { projectId = d.project_id; loadTree(); }
   convEffort = EFFORT_NAMES[d.effort] ? d.effort : "medium";
-  if (!reload) $("effort").value = convEffort;
+  convSpeed = d.speed === "fast" ? "fast" : "standard";
+  if (!reload) { $("effort").value = convEffort; setFast(convSpeed === "fast"); }
   $("title").textContent = d.title;
   $("msgs").innerHTML = "";
   const running = d.status === "running" || d.status === "finalizing";
   d.messages.forEach((m, i) => $("msgs").append(msgEl(m, running && i === d.messages.length - 1)));
   renderSide(); scrollDown();
-  if (running) startPolling(); else setBusy(false);
+  if (running) { startPolling(); if (d.stopping) markStopping(); } else setBusy(false);
 }
 
 function lastReply() { const all = $("msgs").querySelectorAll(".msg.assistant"); return all[all.length - 1]; }
 function setBusy(b) {
   busy = b; $("send").disabled = b;
+  $("send").hidden = b; $("stop").hidden = !b; $("stop").disabled = false; $("stop").textContent = "■ Stop";
   $("hint").textContent = b ? "Working… you can leave this page, it keeps going." : "";
   effortHint();
 }
+function markStopping() { $("stop").disabled = true; $("stop").textContent = "Stopping…"; }
 
 // ------------------------------------------------------------ help (local, never sent to the assistant)
 const EXAMPLES = [
@@ -540,6 +593,7 @@ function showHelp() {
     <h4>Try one</h4>
     ${EXAMPLES.map((e, i) => `<button class="btn ex" data-ex="${i}">${esc(e)}</button>`).join("")}
     <p class="note">Effort (next to Send): Low or Medium for small edits and questions, High to Max for big or tricky work (slower, costs more). You can change it for any message.</p>
+    <p class="note">⚡ Fast: answers faster for about twice the price. ■ Stop: stops the assistant at once. Open the steps to see the images it looks at (renders, map views); the latest one shows while it works.</p>
     <p class="note">Tips: upload your packs or maps first (.zip, .mcaddon and .mcworld are unpacked). One chat per topic keeps answers fast and cheaper. Typing <code>/help</code> or clicking ? is free.</p>
   </div>`;
   $("modal").hidden = false;
@@ -550,15 +604,16 @@ async function send() {
   if (/^\/(help|aide)$/i.test(text)) { $("input").value = ""; autoGrow(); showHelp(); return; }
   if (busy || !text) return;
   if ($("msgs").querySelector(".empty")) $("msgs").innerHTML = "";
-  const effort = $("effort").value;
+  const effort = $("effort").value, speed = fast ? "fast" : "standard";
   $("msgs").append(msgEl({ role: "user", text }));
-  const reply = msgEl({ role: "assistant", text: "", steps: [], effort }, true);
+  const reply = msgEl({ role: "assistant", text: "", steps: [], effort, speed }, true);
   $("msgs").append(reply);
   $("input").value = ""; autoGrow(); scrollDown();
   setBusy(true);
+  $("stop").disabled = !convId; // a new chat can be stopped once the server has created it
   try {
-    const d = await api("send", { project_id: projectId, conversation_id: convId, message: text, effort });
-    convEffort = effort;
+    const d = await api("send", { project_id: projectId, conversation_id: convId, message: text, effort, speed });
+    convEffort = effort; convSpeed = speed;
     if (!convId) { convId = d.conversation_id; await loadList(); $("title").textContent = text.slice(0, 60); }
     startPolling();
   } catch (e) {
@@ -593,6 +648,16 @@ function startPolling() {
             steps.querySelector("ol").insertAdjacentHTML("beforeend", `<li title="${esc(ev.text)}">${esc(ev.text)}</li>`);
             steps.querySelector(".n").textContent = steps.querySelectorAll("li").length;
             live.textContent = ev.text;
+          } else if (ev.kind === "image") {
+            const li = steps.querySelectorAll("li")[ev.step];
+            if (li && !li.querySelector("img")) li.insertAdjacentHTML("beforeend", stepImg(ev.id));
+            steps.querySelector(".ni").textContent = imgCount(steps.querySelectorAll("img.sthumb").length);
+            if (steps.open) loadThumbs(steps);
+            // the latest image stays visible under the live status: stop early if it goes the wrong way
+            const box = el.querySelector(".liveimg");
+            box.innerHTML = `<img data-stepimg="${esc(ev.id)}" alt="Latest image the assistant looked at" title="Latest image the assistant looked at">`;
+            box.hidden = false;
+            loadThumbs(box);
           } else if (ev.kind === "thinking") {
             live.textContent = "Thinking…";
           }
@@ -875,7 +940,7 @@ function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const 
 // ------------------------------------------------------------ wiring
 function autoGrow() { const t = $("input"); t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
 function newChat() {
-  stopPolling(); convId = null; convEffort = null; $("effort").value = savedEffort();
+  stopPolling(); convId = null; convEffort = null; convSpeed = null; $("effort").value = savedEffort(); setFast(false);
   setView("chat"); setBusy(false); emptyState(); renderSide();
 }
 function showFiles(on) {
@@ -939,6 +1004,13 @@ $("navUsage").onclick = showUsage;
 $("navMemory").onclick = () => showMemory();
 $("send").onclick = send;
 $("effort").onchange = () => { try { localStorage.setItem(EFFORT_KEY, $("effort").value); } catch {} effortHint(); };
+$("fast").onclick = async () => { if (fast) setFast(false); else if (await confirmFast()) setFast(true); };
+$("stop").onclick = async () => {
+  if (!convId || $("stop").disabled) return;
+  markStopping();
+  try { await api("stop", { conversation_id: convId }); }
+  catch (e) { toast(e.message, true); $("stop").disabled = false; $("stop").textContent = "■ Stop"; }
+};
 $("input").addEventListener("input", autoGrow);
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
 $("projSel").onchange = () => { projectId = $("projSel").value; selFolder = ""; open = new Set([""]); newChat(); loadTree(); };
@@ -978,6 +1050,8 @@ $("convs").onclick = async (e) => {
   } else openConv(row.dataset.id);
 };
 $("msgs").onclick = async (e) => {
+  const simg = e.target.closest("img[data-stepimg]");
+  if (simg?.src) showPreview("Image the assistant looked at", "image.png", simg.src);
   const out = e.target.closest("[data-out]");
   if (out) {
     const name = out.dataset.name;
