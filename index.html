@@ -119,8 +119,8 @@
   #fast.on { border-color: var(--accent); color: var(--accent); }
   #stop { border-color: var(--bad); color: var(--bad); }
   #stop:disabled { opacity: .6; cursor: default; }
-  details.steps img.sthumb { display: block; max-width: min(320px, 100%); max-height: 180px; margin: 4px 0 6px; border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; }
-  .liveimg img { display: block; max-width: min(360px, 100%); max-height: 220px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; }
+  details.steps li[data-stepimg] { cursor: pointer; color: var(--accent); }
+  details.steps li[data-stepimg]:hover { text-decoration: underline; }
   .confirm { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
   /* files */
@@ -382,7 +382,7 @@ function confirmFast() {
   });
 }
 
-// Images the assistant looked at during a turn (renders, map views): thumbnails in the steps, click to enlarge
+// Images the assistant looked at during a turn (renders, map views): in the steps, their line opens the image in the popup
 const stepImgUrls = new Map();
 function stepImgUrl(id) {
   if (!stepImgUrls.has(id)) {
@@ -392,12 +392,14 @@ function stepImgUrl(id) {
   }
   return stepImgUrls.get(id);
 }
-function loadThumbs(root) {
-  root.querySelectorAll("img[data-stepimg]:not([src])").forEach(async (img) => {
-    try { img.src = await stepImgUrl(img.dataset.stepimg); } catch { img.remove(); }
-  });
+async function showStepImage(li) {
+  $("mTitle").textContent = li.title; $("mBody").innerHTML = '<span class="muted">Loading…</span>'; $("mDl").hidden = true;
+  $("modal").hidden = false;
+  try { await showPreview(li.title, "image.png", await stepImgUrl(li.dataset.stepimg)); }
+  catch (e) { $("mBody").innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
 }
-const stepImg = (id) => `<img class="sthumb" data-stepimg="${esc(id)}" alt="Image the assistant looked at">`;
+const stepLi = (text, img) =>
+  `<li title="${esc(text)}"${img ? ` data-stepimg="${esc(img)}"` : ""}>${esc(text)}</li>`;
 const imgCount = (n) => n ? ` · ${n} image${n > 1 ? "s" : ""}` : "";
 
 async function api(action, body, raw) {
@@ -501,12 +503,10 @@ function msgEl(m, live) {
   const imgs = new Map((m.step_images ?? []).map((x) => [x.step, x.id]));
   el.innerHTML = `
     <details class="steps" ${steps.length ? "" : "hidden"}><summary>▸ <span class="n">${steps.length}</span> steps<span class="ni">${imgCount(imgs.size)}</span></summary>
-      <ol>${steps.map((s, i) => `<li title="${esc(s)}">${esc(s)}${imgs.has(i) ? stepImg(imgs.get(i)) : ""}</li>`).join("")}</ol></details>
+      <ol>${steps.map((s, i) => stepLi(s, imgs.get(i))).join("")}</ol></details>
     <div class="md">${md(m.text || "")}</div>
     <div class="live" ${live ? "" : "hidden"}><span class="spin"></span><span>Starting…</span></div>
-    <div class="liveimg" hidden></div>
     <div class="meta"></div>`;
-  el.querySelector("details.steps").addEventListener("toggle", (e) => { if (e.target.open) loadThumbs(e.target); });
   fillMeta(el, m);
   return el;
 }
@@ -593,7 +593,7 @@ function showHelp() {
     <h4>Try one</h4>
     ${EXAMPLES.map((e, i) => `<button class="btn ex" data-ex="${i}">${esc(e)}</button>`).join("")}
     <p class="note">Effort (next to Send): Low or Medium for small edits and questions, High to Max for big or tricky work (slower, costs more). You can change it for any message.</p>
-    <p class="note">⚡ Fast: answers faster for about twice the price. ■ Stop: stops the assistant at once. Open the steps to see the images it looks at (renders, map views); the latest one shows while it works.</p>
+    <p class="note">⚡ Fast: answers faster for about twice the price. ■ Stop: stops the assistant at once. To see an image it looked at (a render, a map view), open the steps and click its line.</p>
     <p class="note">Tips: upload your packs or maps first (.zip, .mcaddon and .mcworld are unpacked). One chat per topic keeps answers fast and cheaper. Typing <code>/help</code> or clicking ? is free.</p>
   </div>`;
   $("modal").hidden = false;
@@ -645,19 +645,14 @@ function startPolling() {
             live.textContent = "Working…";
           } else if (ev.kind === "step") {
             steps.hidden = false;
-            steps.querySelector("ol").insertAdjacentHTML("beforeend", `<li title="${esc(ev.text)}">${esc(ev.text)}</li>`);
+            steps.querySelector("ol").insertAdjacentHTML("beforeend", stepLi(ev.text));
             steps.querySelector(".n").textContent = steps.querySelectorAll("li").length;
             live.textContent = ev.text;
           } else if (ev.kind === "image") {
+            // nothing is shown: the step's line becomes clickable and opens the image in the popup
             const li = steps.querySelectorAll("li")[ev.step];
-            if (li && !li.querySelector("img")) li.insertAdjacentHTML("beforeend", stepImg(ev.id));
-            steps.querySelector(".ni").textContent = imgCount(steps.querySelectorAll("img.sthumb").length);
-            if (steps.open) loadThumbs(steps);
-            // the latest image stays visible under the live status: stop early if it goes the wrong way
-            const box = el.querySelector(".liveimg");
-            box.innerHTML = `<img data-stepimg="${esc(ev.id)}" alt="Latest image the assistant looked at" title="Latest image the assistant looked at">`;
-            box.hidden = false;
-            loadThumbs(box);
+            if (li) li.dataset.stepimg = ev.id;
+            steps.querySelector(".ni").textContent = imgCount(steps.querySelectorAll("li[data-stepimg]").length);
           } else if (ev.kind === "thinking") {
             live.textContent = "Thinking…";
           }
@@ -1050,8 +1045,8 @@ $("convs").onclick = async (e) => {
   } else openConv(row.dataset.id);
 };
 $("msgs").onclick = async (e) => {
-  const simg = e.target.closest("img[data-stepimg]");
-  if (simg?.src) showPreview("Image the assistant looked at", "image.png", simg.src);
+  const simg = e.target.closest("li[data-stepimg]");
+  if (simg) showStepImage(simg);
   const out = e.target.closest("[data-out]");
   if (out) {
     const name = out.dataset.name;
