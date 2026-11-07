@@ -110,6 +110,9 @@
   #input { width: 100%; border: 0; background: transparent; color: var(--text); font: inherit; resize: none; outline: none; padding: 6px 8px; max-height: 220px; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   #send:disabled { opacity: .45; cursor: default; }
+  .sendrow { display: flex; align-items: center; gap: 6px; flex: none; }
+  #effort { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 5px 6px; font: inherit; font-size: 13px; }
+  #effort:hover { border-color: var(--faint); }
 
   /* files */
   aside#files { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -277,7 +280,16 @@
           <textarea id="input" rows="1" placeholder="Describe what to build or change in your project… (Enter to send, Shift+Enter for a new line)"></textarea>
           <div class="row">
             <span class="muted" id="hint" style="font-size:12px"></span>
-            <button class="btn primary" id="send">Send</button>
+            <span class="sendrow">
+              <select id="effort" aria-label="Effort" title="How hard the assistant thinks for this message. Higher: better on big or tricky work, slower and more expensive.">
+                <option value="low">Low effort</option>
+                <option value="medium">Medium effort</option>
+                <option value="high">High effort</option>
+                <option value="xhigh">Extra high effort</option>
+                <option value="max">Max effort</option>
+              </select>
+              <button class="btn primary" id="send">Send</button>
+            </span>
           </div>
         </div>
       </div>
@@ -325,6 +337,22 @@ const store = { get() { try { return localStorage.getItem(KEY); } catch { return
 let memoryId = null, memFiles = [], memSel = null;
 let code = store.get(), projects = [], convs = [], projectId = null, convId = null, files = [];
 let selFolder = "", open = new Set([""]), pollTimer = null, busy = false, view = "chat";
+
+// Effort, chosen for each message. The open chat's assistant runs at one level: another level restarts it for that
+// message with the chat history (the server handles it), which is a bit slower.
+const EFFORT_KEY = "olivares-effort";
+const EFFORT_NAMES = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
+let convEffort = null; // level of the open chat (null: new chat)
+function savedEffort() {
+  try { const e = localStorage.getItem(EFFORT_KEY); return EFFORT_NAMES[e] ? e : "medium"; } catch { return "medium"; }
+}
+function effortHint() {
+  if (busy) return;
+  const e = $("effort").value;
+  $("hint").textContent = convEffort && e !== convEffort
+    ? `New effort: the assistant restarts with the chat's history (a bit slower).`
+    : "";
+}
 
 async function api(action, body, raw) {
   const r = await fetch(`${BASE}?action=${action}`, {
@@ -439,6 +467,7 @@ function fillMeta(el, m) {
     `<button class="chip" data-out="${esc(f.file_id)}" data-name="${esc(f.filename)}" title="${IMAGE.test(f.filename) || TEXT.test(f.filename) ? "Preview" : "Download"}">${IMAGE.test(f.filename) ? "🖼" : TEXT.test(f.filename) ? "📄" : "⬇"} ${esc(f.filename)} <small>${size(f.size)}</small></button>`);
   if (m.memory_changed) chips.push(`<button class="chip" data-memory="1">🧠 memory updated</button>`);
   if (m.changed_files) chips.push(`<button class="chip" data-showfiles="1">📁 ${m.changed_files} project file${m.changed_files > 1 ? "s" : ""} updated</button>`);
+  if (m.effort) chips.push(`<span class="tag" title="Effort of this answer">${esc(EFFORT_NAMES[m.effort] ?? m.effort)} effort</span>`);
   if (m.cost_eur != null) chips.push(`<span class="tag" title="Cost of this answer">${eur(m.cost_eur)}</span>`);
   meta.innerHTML = chips.join("");
   meta.hidden = !chips.length;
@@ -447,9 +476,12 @@ function scrollDown() { const t = $("thread"); t.scrollTop = t.scrollHeight; }
 
 async function openConv(id) {
   stopPolling();
+  const reload = convId === id; // the same chat refreshed at the end of a turn: keep the effort picked meanwhile
   convId = id; setView("chat");
   const d = await api("get", { conversation_id: id });
   if (d.project_id !== projectId) { projectId = d.project_id; loadTree(); }
+  convEffort = EFFORT_NAMES[d.effort] ? d.effort : "medium";
+  if (!reload) $("effort").value = convEffort;
   $("title").textContent = d.title;
   $("msgs").innerHTML = "";
   const running = d.status === "running" || d.status === "finalizing";
@@ -459,7 +491,11 @@ async function openConv(id) {
 }
 
 function lastReply() { const all = $("msgs").querySelectorAll(".msg.assistant"); return all[all.length - 1]; }
-function setBusy(b) { busy = b; $("send").disabled = b; $("hint").textContent = b ? "Working… you can leave this page, it keeps going." : ""; }
+function setBusy(b) {
+  busy = b; $("send").disabled = b;
+  $("hint").textContent = b ? "Working… you can leave this page, it keeps going." : "";
+  effortHint();
+}
 
 // ------------------------------------------------------------ help (local, never sent to the assistant)
 const EXAMPLES = [
@@ -503,6 +539,7 @@ function showHelp() {
     </ul>
     <h4>Try one</h4>
     ${EXAMPLES.map((e, i) => `<button class="btn ex" data-ex="${i}">${esc(e)}</button>`).join("")}
+    <p class="note">Effort (next to Send): Low or Medium for small edits and questions, High to Max for big or tricky work (slower, costs more). You can change it for any message.</p>
     <p class="note">Tips: upload your packs or maps first (.zip, .mcaddon and .mcworld are unpacked). One chat per topic keeps answers fast and cheaper. Typing <code>/help</code> or clicking ? is free.</p>
   </div>`;
   $("modal").hidden = false;
@@ -513,13 +550,15 @@ async function send() {
   if (/^\/(help|aide)$/i.test(text)) { $("input").value = ""; autoGrow(); showHelp(); return; }
   if (busy || !text) return;
   if ($("msgs").querySelector(".empty")) $("msgs").innerHTML = "";
+  const effort = $("effort").value;
   $("msgs").append(msgEl({ role: "user", text }));
-  const reply = msgEl({ role: "assistant", text: "", steps: [] }, true);
+  const reply = msgEl({ role: "assistant", text: "", steps: [], effort }, true);
   $("msgs").append(reply);
   $("input").value = ""; autoGrow(); scrollDown();
   setBusy(true);
   try {
-    const d = await api("send", { project_id: projectId, conversation_id: convId, message: text });
+    const d = await api("send", { project_id: projectId, conversation_id: convId, message: text, effort });
+    convEffort = effort;
     if (!convId) { convId = d.conversation_id; await loadList(); $("title").textContent = text.slice(0, 60); }
     startPolling();
   } catch (e) {
@@ -835,7 +874,10 @@ function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const 
 
 // ------------------------------------------------------------ wiring
 function autoGrow() { const t = $("input"); t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
-function newChat() { stopPolling(); convId = null; setView("chat"); setBusy(false); emptyState(); renderSide(); }
+function newChat() {
+  stopPolling(); convId = null; convEffort = null; $("effort").value = savedEffort();
+  setView("chat"); setBusy(false); emptyState(); renderSide();
+}
 function showFiles(on) {
   $("app").classList.toggle("nofiles", !on);
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", (b.dataset.tab === "files") === on));
@@ -896,6 +938,7 @@ $("newChat").onclick = newChat;
 $("navUsage").onclick = showUsage;
 $("navMemory").onclick = () => showMemory();
 $("send").onclick = send;
+$("effort").onchange = () => { try { localStorage.setItem(EFFORT_KEY, $("effort").value); } catch {} effortHint(); };
 $("input").addEventListener("input", autoGrow);
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
 $("projSel").onchange = () => { projectId = $("projSel").value; selFolder = ""; open = new Set([""]); newChat(); loadTree(); };
